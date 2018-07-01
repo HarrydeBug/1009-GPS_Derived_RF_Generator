@@ -15,7 +15,7 @@ SoftwareSerial gpsPort(2, 3); // RX, TX
 #define FIXOut 4         //Pin Out at IDC. Indicator for GPS Lock on pin 4
 #define LDO_Enable A3    //GPS Voltage regulator Enable on pin A3
 boolean GPSOK, passthrough;
-const char softwareversion[] = "1.05" ; //Version of this program, sent to serialport at startup
+#define softwareversion "1.05" //Version of this program, sent to serialport at startup
 NMEAGPS  gps; // This parses the GPS characters
 gps_fix  fix; // This holds on to the latest values
 
@@ -27,9 +27,8 @@ void setup()
 {
   Serial.begin(9600);
   while (!Serial);
-  Serial.println("");
-  Serial.print(F("Zachtek GPS referenced RF, Software version: "));
-  Serial.println(softwareversion);
+  Serial.println(F(""));
+  Serial.println(F("Zachtek GPS referenced RF, Software version: " softwareversion));
 
   pinMode(LDO_Enable, OUTPUT); // Set Voltage Regulator Enable pin as output.
 
@@ -59,14 +58,14 @@ void setup()
 
   //Program GPS to output RF
   if (setGPS_OutputFreq1MHz()) {
-    Serial.println ("GPS Initialized to output RF at 1MHz");
-    Serial.println ("Initialization is complete.");
-    Serial.println ("");
+    Serial.println (F("GPS Initialized to output RF at 1MHz"));
+    Serial.println (F("Initialization is complete."));
+    Serial.println (F(""));
     GPSOK = true;
   }
   else
   {
-    Serial.println ("Error! Could not program GPS!");
+    Serial.println (F("Error! Could not program GPS!"));
     GPSOK = false;
   }
 }
@@ -134,8 +133,8 @@ bool setGPS_OutputFreq100kHz()
   };
 
   sendUBX(setOutputFreq, sizeof(setOutputFreq) / sizeof(uint8_t));
-  gps_set_sucess = getUBX_ACK(setOutputFreq);
-  //Serial.println("Set output Freq Done");
+  bool gps_set_sucess = getUBX_ACK(setOutputFreq);
+  // Serial.println(F("Set output Freq Done"));
   return gps_set_sucess;
 }
 
