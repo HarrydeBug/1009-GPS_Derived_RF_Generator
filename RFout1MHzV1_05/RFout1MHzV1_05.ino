@@ -19,7 +19,18 @@ boolean GPSOK, passthrough;
 NMEAGPS  gps; // This parses the GPS characters
 gps_fix  fix; // This holds on to the latest values
 
+constexpr auto MHz = 1000000lu;
+constexpr auto KHz = 1000lu;
+constexpr auto Hz = 1lu;
 
+// This is a little bit arcane but it just lets you keep the user string
+// and the actual value in synch automatically
+#define SPEED 1
+#define UNITS MHz
+#define STRINGIFY1(x) #x
+#define STRINGIFY(x) STRINGIFY1(x)
+#define SPEED_STR STRINGIFY(SPEED) STRINGIFY(UNITS)
+#define SPEED_ARG (UINT32_C(SPEED) * UNITS)
 
 //--------------------------  SETUP -----------------------
 
@@ -57,10 +68,10 @@ void setup()
   delay(500);//Wait for GPSmodule to complete it's power on.
 
   //Program GPS to output RF
-  if (setGPS_OutputFreq1MHz()) {
-    Serial.println (F("GPS Initialized to output RF at 1MHz"));
-    Serial.println (F("Initialization is complete."));
-    Serial.println (F(""));
+  if (setGPS_OutputFreq(SPEED_ARG)) {
+    Serial.println ("GPS Initialized to output RF at " SPEED_STR);
+    Serial.println ("Initialization is complete.");
+    Serial.println ("");
     GPSOK = true;
   }
   else
@@ -123,81 +134,68 @@ void loop()
 
 //--------------------------
 
-bool setGPS_OutputFreq100kHz()
-{
-  int gps_set_sucess = 0;
-  uint8_t setOutputFreq[] = {
-    0xB5, 0x62, 0x06, 0x31, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0x00, 0x00, 0x00, 0x01, 0x00,
-    0x00, 0x00, 0xA0, 0x86, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00,
-    0x00, 0x00, 0xEF, 0x00, 0x00, 0x00, 0x20, 0x1B
-  };
+// For details of the UBX protocol, see
+// https://www.u-blox.com/sites/default/files/products/documents/u-blox7-V14_ReceiverDescriptionProtocolSpec_%28GPS.G7-SW-12001%29_Public.pdf
+// Documentation of this packet is under the heading CFG-TP5 (35.19.2) in the current documentation.
+uint8_t setOutputFreq[] = {
+0xB5, 0x62, 0x06, 0x31, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0x00, 0x00, 0x00, 0x01, 0x00,
+0x00, 0x00, 0xA0, 0x86, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00,
+0x00, 0x00, 0xEF, 0x00, 0x00, 0x00, 0x20, 0x1B
+};
 
+#define OFFSET_FREQUENCY_LOCKED (18)
+#define OFFSET_CKSUM (38)
+
+// Note: Normally payload_start is 2 bytes past the start of buf, because the first two bytes
+// are the message type and are not checksummed.
+void ubx_compute_checksum(uint8_t *payload_start, uint8_t *payload_end, uint8_t *cksum) {
+  uint8_t ck_a=0, ck_b=0;
+  for(const uint8_t *p = payload_start; p != payload_end; p++)
+  {
+    ck_a += *p;
+    ck_b += ck_a;
+  }
+  cksum[0] = ck_a;
+  cksum[1] = ck_b;
+}
+
+bool setGPS_OutputFreq(uint32_t freq) {
+  for(int i=0; i<4; i++) {
+    setOutputFreq[OFFSET_FREQUENCY_LOCKED+i] = freq & 0xff;
+    freq >>= 8;
+  }
+  ubx_compute_checksum(setOutputFreq+2, setOutputFreq+38, setOutputFreq+38);
   sendUBX(setOutputFreq, sizeof(setOutputFreq) / sizeof(uint8_t));
   bool gps_set_sucess = getUBX_ACK(setOutputFreq);
   // Serial.println(F("Set output Freq Done"));
   return gps_set_sucess;
 }
 
+bool setGPS_OutputFreq1Kz()
+{
+  return setGPS_OutputFreq(1*KHz);
+}
+
 bool setGPS_OutputFreq1MHz()
 {
-  int gps_set_sucess = 0;
-  uint8_t setOutputFreq[] = {
-    0xB5, 0x62, 0x06, 0x31, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0x00, 0x00, 0x00, 0x01, 0x00,
-    0x00, 0x00, 0x40, 0x42, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00,
-    0x00, 0x00, 0xEF, 0x00, 0x00, 0x00, 0x8A, 0x8B
-  };
-
-  sendUBX(setOutputFreq, sizeof(setOutputFreq) / sizeof(uint8_t));
-  gps_set_sucess = getUBX_ACK(setOutputFreq);
-  //Serial.println("Set output Freq Done");
-  return gps_set_sucess;
+  return setGPS_OutputFreq(1*MHz);
 }
 
 bool setGPS_OutputFreq2MHz()
 {
-  int gps_set_sucess = 0;
-  uint8_t setOutputFreq[] = {
-    0xB5, 0x62, 0x06, 0x31, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0x00, 0x00, 0x00, 0x01, 0x00,
-    0x00, 0x00, 0x80, 0x84, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00,
-    0x00, 0x00, 0xEF, 0x00, 0x00, 0x00, 0x1B, 0x7F
-  };
-
-  sendUBX(setOutputFreq, sizeof(setOutputFreq) / sizeof(uint8_t));
-  gps_set_sucess = getUBX_ACK(setOutputFreq);
-  //Serial.println("Set output Freq Done");
-  return gps_set_sucess;
+  return setGPS_OutputFreq(2*MHz);
 }
 
 
 bool setGPS_OutputFreq4MHz()
 {
-  int gps_set_sucess = 0;
-  uint8_t setOutputFreq[] = {
-    0xB5, 0x62, 0x06, 0x31, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0x00, 0x00, 0x00, 0x01, 0x00,
-    0x00, 0x00, 0x00, 0x09, 0x3D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00,
-    0x00, 0x00, 0xEF, 0x00, 0x00, 0x00, 0x3F, 0x8C
-  };
-
-  sendUBX(setOutputFreq, sizeof(setOutputFreq) / sizeof(uint8_t));
-  gps_set_sucess = getUBX_ACK(setOutputFreq);
-  //Serial.println("Set output Freq Done");
-  return gps_set_sucess;
+  return setGPS_OutputFreq(4*MHz);
 }
 
 //8MHz is the highest low-jitter frequency possible
 bool setGPS_OutputFreq8MHz()
 {
-  int gps_set_sucess = 0;
-  uint8_t setOutputFreq[] = {
-    0xB5, 0x62, 0x06, 0x31, 0x20, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
-    0x00, 0x00, 0x00, 0x12, 0x7A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00,
-    0x00, 0x00, 0x6F, 0x00, 0x00, 0x00, 0xD4, 0x28
-  };
-
-  sendUBX(setOutputFreq, sizeof(setOutputFreq) / sizeof(uint8_t));
-  gps_set_sucess = getUBX_ACK(setOutputFreq);
-  //Serial.println("Set output Freq Done");
-  return gps_set_sucess;
+  return setGPS_OutputFreq(8*MHz);
 }
 
 //10 MHz is very jittery. Numbers that can be done with an integer division from 48MHz will produce
@@ -205,34 +203,14 @@ bool setGPS_OutputFreq8MHz()
 //If 10MHz low jitter is needed then one option is to output 2MHz and then filter out the 5th overtone arriving at 10MHz in that way.
 bool setGPS_OutputFreq10MHz()
 {
-  int gps_set_sucess = 0;
-  uint8_t setOutputFreq[] = {
-    0xB5, 0x62, 0x06, 0x31, 0x20, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
-    0x00, 0x00, 0x80, 0x96, 0x98, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00,
-    0x00, 0x00, 0x6F, 0x00, 0x00, 0x00, 0xF6, 0x10
-  };
-
-  sendUBX(setOutputFreq, sizeof(setOutputFreq) / sizeof(uint8_t));
-  gps_set_sucess = getUBX_ACK(setOutputFreq);
-  //Serial.println("Set output Freq Done");
-  return gps_set_sucess;
+  return setGPS_OutputFreq(10*MHz);
 }
 
 //16MHz is above the specs for lUblox Neo-6, only included for experiments.
 //This will not produce as clean Square wave.
 bool setGPS_OutputFreq16MHz()
 {
-  int gps_set_sucess = 0;
-  uint8_t setOutputFreq[] = {
-    0xB5, 0x62, 0x06, 0x31, 0x20, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
-    0x00, 0x00, 0x00, 0x24, 0xF4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00,
-    0x00, 0x00, 0x6F, 0x00, 0x00, 0x00, 0x60, 0x12
-  };
-
-  sendUBX(setOutputFreq, sizeof(setOutputFreq) / sizeof(uint8_t));
-  gps_set_sucess = getUBX_ACK(setOutputFreq);
-  //Serial.println("Set output Freq Done");
-  return gps_set_sucess;
+  return setGPS_OutputFreq(16*MHz);
 }
 
 
