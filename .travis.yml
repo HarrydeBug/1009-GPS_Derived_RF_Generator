@@ -1,0 +1,35 @@
+dist: trusty
+language: bash
+cache:
+  directories:
+  - "${HOME}/persist"
+addons:
+  apt:
+    packages:
+    - build-essential
+    - curl
+    - xvfb
+install:
+- /sbin/start-stop-daemon --start --quiet --pidfile /tmp/custom_xvfb_1.pid --make-pidfile --background --exec /usr/bin/Xvfb -- :1 -ac -screen 0 1280x1024x16
+- sleep 3
+- export DISPLAY=:1.0
+- test -e "${HOME}/persist/arduino.tar.xz" || curl -o "${HOME}/persist/arduino.tar.xz" https://downloads.arduino.cc/arduino-1.8.5-linux64.tar.xz
+- mkdir $HOME/arduino_ide
+- tar -C $HOME/arduino_ide --strip-components=1 -xaf "${HOME}/persist/arduino.tar.xz"
+- export PATH="$HOME/arduino_ide:$PATH"
+- arduino --install-library "NeoGPS" || arduino --install-library "NeoGPS"
+- mkdir -p artifacts
+
+script:
+- arduino --pref "build.path=$(pwd)/artifacts" --pref "arduino:avr:pro:cpu=8MHzatmega328" --pref "compiler.warning_level=all" --preserve-temp-files --verbose-build --verify "$(pwd)/RFout1MHzV1_05/RFout1MHzV1_05.ino"
+
+deploy:
+  provider: releases
+  api_key:
+    secure: eUTHqMZp7e4eASS4GXx/qbmO71MNp1KbaQU9kQeFgXFxbOL60bOQJu7KHJUlLsmpipNZs098XRGpEcIIR6EhQ5A+28F1k8X/QClrScV2sn4BiXoXpHCQHPmhzySaLN1U5u/nTAQvZeUX5E6Or5N9NpvPtADoKKVn00bBuStM/ItH15/10RFUmJ8MMpczTvcFb+LHpFZksGJaQPxDVqXiVnyP+v9dnASdGWtqWPMUt6IaVhH13lE0eoY6AyOYozINPzsORb8JLOC8a3m7v5o1I9hlhpr3/oWhdqy0eDu+5QAOtBmZi7udr0gutnHlq/AkQkLFZvHZotRgMMqCBXQm3OAubDoxZ1aHX8KzKvjnFLvCjX8+gLDiDkiF3RQMJ21yIl1x+C6Dy0FAb/OvkWPQW1TqZPSdoMeNv6L/M4r9OdMHxqx38DuewhLkGfnVpGffo1PmK12uJ9z3qWYW2X/d5VyLzJgdU1tCOc9VjKT5QquZS5Qcy+gbIkbuLmWISN2TWZ4wPnbsm/OX8hfnODg4MbZhXDJoXpWXXDy3jVaiWqUji4MQmxBeIeWZ/vkygXhL0ez506qxC6meZedDcuqC87JhuSqFF/ou/IybfOpoOip+ovaWFwddkkm/RvOIyAKPnjyFD17e8IGzF0cYJ6mhYH3fOVwqe83+8rpJbrbWrWw=
+  file_glob: true
+  file: "artifacts/*.ino.hex"
+  on:
+    repo: jepler/1009-GPS_Derived_RF_Generator
+    tags: true
+  skip_cleanup: true
