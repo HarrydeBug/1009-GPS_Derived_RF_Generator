@@ -242,10 +242,7 @@ boolean getUBX_ACK(uint8_t *MSG) {
   ackPacket[9] = 0; // CK_B
 
   // Calculate the checksums
-  for (uint8_t ubxi = 2; ubxi < 8; ubxi++) {
-    ackPacket[8] = ackPacket[8] + ackPacket[ubxi];
-    ackPacket[9] = ackPacket[9] + ackPacket[8];
-  }
+  ubx_compute_checksum(ackPacket+2, ackPacket+8, ackPacket+8);
 
   while (1) {  // Test for success
     if (ackByteID > 9) {
