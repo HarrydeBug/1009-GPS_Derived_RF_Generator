@@ -15,6 +15,8 @@ SoftwareSerial gpsPort(2, 3); // RX, TX
 #define FIXOut 4         //Pin Out at IDC. Indicator for GPS Lock on pin 4
 #define LDO_Enable A3    //GPS Voltage regulator Enable on pin A3
 boolean GPSOK, passthrough;
+int state; // serial command state machine
+uint32_t freq; // Frequency in Hz commanded via serial
 #define softwareversion "1.05" //Version of this program, sent to serialport at startup
 NMEAGPS  gps; // This parses the GPS characters
 gps_fix  fix; // This holds on to the latest values
@@ -91,6 +93,37 @@ void handle_serial() {
     Serial.println(F("Entering passthrough mode -- reset microcontroller to return to normal mode\n"));
     passthrough = true;
   }
+  else if(c == 'F' || c == 'f') {
+    Serial.print(F("Frequency?"));
+    state = 1; freq = 0;
+  }
+  else if(state == 1) {
+    if(c >= '0' && c <= '9') {
+      Serial.write(c);
+      freq = freq * 10 + c - '0';
+    } else if (c == 'M' || c == 'm') {
+      Serial.write(c);
+      freq *= 1000000lu;
+    } else if (c == 'K' || c == 'k') {
+      Serial.write(c);
+      freq *= 1000lu;
+    } else if (c == '\n' || c == '\r') {
+      Serial.println(F(""));
+      if (setGPS_OutputFreq(freq)) {
+        Serial.print ("GPS Initialized to output RF at " );
+        Serial.println (freq);
+        Serial.println ("Initialization is complete.");
+        Serial.println ("");
+        GPSOK = true;
+      }
+      else
+      {
+        Serial.println (F("Error! Could not program GPS!"));
+        GPSOK = false;
+      }
+      state = 0;
+    }
+  }
 }
 
 
@@ -105,6 +138,7 @@ void loop()
   if(Serial.available()) {
     handle_serial();
   }
+  if(state != 0) return;
   while (gps.available( gpsPort )) {
     fix = gps.read();
     if (fix.valid.location && fix.valid.date && fix.valid.time)
