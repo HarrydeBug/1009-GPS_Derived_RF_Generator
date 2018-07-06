@@ -14,7 +14,7 @@ SoftwareSerial gpsPort(2, 3); // RX, TX
 #define LEDIndicator1 5  //LED indicator for GPS Lock on pin A3
 #define FIXOut 4         //Pin Out at IDC. Indicator for GPS Lock on pin 4
 #define LDO_Enable A3    //GPS Voltage regulator Enable on pin A3
-boolean GPSOK;
+boolean GPSOK, passthrough;
 const char softwareversion[] = "1.05" ; //Version of this program, sent to serialport at startup
 NMEAGPS  gps; // This parses the GPS characters
 gps_fix  fix; // This holds on to the latest values
@@ -74,11 +74,27 @@ void setup()
 //--------------------------
 
 
+// Handle serial commands
+void handle_serial() {
+  int c = Serial.read();
+  if(c == 'P') {
+    Serial.println(F("Entering passthrough mode -- reset microcontroller to return to normal mode\n"));
+    passthrough = true;
+  }
+}
 
 
 //--------------------------  Main loop -----------------------
 void loop()
 {
+  if(passthrough) {
+    if(gpsPort.available()) Serial.write(gpsPort.read());
+    if(Serial.available()) gpsPort.write(Serial.read());
+    return;
+  }
+  if(Serial.available()) {
+    handle_serial();
+  }
   while (gps.available( gpsPort )) {
     fix = gps.read();
     if (fix.valid.location && fix.valid.date && fix.valid.time)
