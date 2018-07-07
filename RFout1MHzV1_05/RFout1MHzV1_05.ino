@@ -40,8 +40,18 @@ void setup()
 {
   Serial.begin(9600);
   while (!Serial);
+
   Serial.println(F(""));
   Serial.println(F("Zachtek GPS referenced RF, Software version: " softwareversion));
+
+  if(strapped_for_passthrough()) {
+    pinMode(LDO_Enable, OUTPUT); // Set Voltage Regulator Enable pin as output.
+    digitalWrite(LDO_Enable, HIGH); //Turn on 3.1V Power supply for the Ublox GPS module
+    gpsPort.begin(9600);
+    passthrough = 1;
+    Serial.println(F("Strapped for passthrough.  Disconnect jumper between SDA/SCL for normal operation"));
+    return;
+  }
 
   pinMode(LDO_Enable, OUTPUT); // Set Voltage Regulator Enable pin as output.
 
@@ -302,3 +312,25 @@ boolean getUBX_ACK(uint8_t *MSG) {
     }//If
   }//While
 }//getUBX_ACK
+
+// If pins 7/8 on the 10-pin header are bridged, this is "strapped for passthrough"
+// Detect this by driving one pin high and checking the other pin, then driving low and repeating
+// set pins back to inputs before returning
+bool strapped_for_passthrough() {
+  bool result = true;
+  pinMode(A4, OUTPUT);
+
+  digitalWrite(A4, HIGH);
+  delay(1);
+  if(!digitalRead(A5)) result = false;
+
+  digitalWrite(A4, LOW);
+  pinMode(A5, INPUT_PULLUP);
+  delay(1);
+  if(digitalRead(A5)) result = false;
+
+  pinMode(A4, INPUT);
+  pinMode(A5, INPUT);
+
+  return result;
+}
