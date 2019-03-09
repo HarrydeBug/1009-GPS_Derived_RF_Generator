@@ -361,6 +361,10 @@ bool strapped_for_passthrough() {
   return result;
 }
 
+struct eeprom_data {
+    uint32_t freq;
+};
+
 
 unsigned long GetEEPROM_CRC(void) {
 
@@ -373,7 +377,7 @@ unsigned long GetEEPROM_CRC(void) {
 
   unsigned long crc = ~0L;
 
-  for (int index = 0 ; index < sizeof(freq) ; ++index) {
+  for (int index = 0 ; index < sizeof(eeprom_data) ; ++index) {
     crc = crc_table[(crc ^ EEPROM[index]) & 0x0f] ^ (crc >> 4);
     crc = crc_table[(crc ^ (EEPROM[index] >> 4)) & 0x0f] ^ (crc >> 4);
     crc = ~crc;
@@ -384,9 +388,10 @@ unsigned long GetEEPROM_CRC(void) {
 void SaveToEPROM ()
 {
 unsigned long CRCFromEEPROM;
-  EEPROM.put(0, freq);                     //Save the Freqency to EEPROM at address0
+  eeprom_data e = {freq};
+  EEPROM.put(0, e);                     //Save the Freqency to EEPROM at address0
   CRCFromEEPROM=GetEEPROM_CRC ();          //Calculate CRC on the saved data
-  EEPROM.put(sizeof(freq), CRCFromEEPROM); //Save the CRC after the data
+  EEPROM.put(sizeof(eeprom_data), CRCFromEEPROM); //Save the CRC after the data
 }
 
 
@@ -394,9 +399,11 @@ bool LoadFromEPROM (void)
 {
 unsigned long CRCFromEEPROM,CalculatedCRC;
 
-  EEPROM.get(0, freq);                           //Load the Frequency from EEPROM address 0
-  EEPROM.get(sizeof(freq), CRCFromEEPROM);       //Load the CRC value that is stored in EEPROM
+  eeprom_data e;
+  EEPROM.get(0, &e);                           //Load the Frequency from EEPROM address 0
+  EEPROM.get(sizeof(eeprom_data), CRCFromEEPROM);       //Load the CRC value that is stored in EEPROM
   CalculatedCRC=GetEEPROM_CRC();                 //Calculate the CRC of the Frequency
+  freq = e.freq;
   return (CRCFromEEPROM==CalculatedCRC);         //If  Stored and Calculated CRC are the same then return true
 }
 
