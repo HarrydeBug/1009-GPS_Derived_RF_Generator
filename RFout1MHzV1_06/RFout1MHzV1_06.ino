@@ -19,6 +19,7 @@ boolean GPSOK, passthrough;
 int cmdstate; // serial command state machine
 int fixstate; //GPS Fix state machine 0=Init, 1=wating for fix,2=fix accuired
 uint32_t freq; // Frequency in Hz commanded via serial
+uint32_t period; // Period in Hz commanded via serial
 #define softwareversion "1.06" //Version of this program, sent to serialport at startup
 NMEAGPS  gps; // This parses the GPS characters
 gps_fix  fix; // This holds on to the latest values
@@ -79,6 +80,7 @@ void setup()
   {
     Serial.println ("No startup frequency data was found, using 1MHz");
     freq = 1000000;
+    period = 0;
   }
   
   //Program GPS
@@ -89,12 +91,19 @@ void setup()
   delay(500);//Wait for GPSmodule to complete it's power on.
  
   //Program GPS to output RF
-  if (setGPS_OutputFreq(freq)) {
+  if (freq && setGPS_OutputFreq(freq)) {
     Serial.print (F("GPS Initialized to output RF at "));
     Serial.print (freq);
     Serial.println (F("Hz"));
     Serial.println ("Initialization is complete.");
     Serial.println ("");
+    GPSOK = true;
+  } else if (period && setGPS_OutputPeriod(period)) {
+    Serial.print (F("GPS reprogramed to output RF at "));
+    Serial.print(period);
+    Serial.print(F("us, approximately "));
+    Serial.print(1.e6 / period);
+    Serial.println (F("Hz"));
     GPSOK = true;
   }
   else
@@ -119,14 +128,18 @@ void handle_serial() {
   }
    else if(c == 'S' || c == 's') {
     SaveToEPROM ();
-    Serial.println(F("Frequency was saved"));
+    Serial.println(F("Time pulse setting was saved"));
   }
   else if(c == 'H' || c == 'h') {
     HelpText ();  
   }
   else if(c == 'F' || c == 'f') {
     Serial.print(F("Frequency?"));
-    cmdstate = 1; freq = 0;
+    cmdstate = 1; freq = period = 0;
+  }
+  else if(c == 'T' || c == 't') {
+    Serial.print(F("Period?"));
+    cmdstate = 2; freq = period = 0;
   }
   else if(cmdstate == 1) {
     if(c >= '0' && c <= '9') {
@@ -143,7 +156,37 @@ void handle_serial() {
       if (setGPS_OutputFreq(freq)) {
         Serial.print (F("GPS reprogramed to output RF at "));
         Serial.print(freq);
-         Serial.println (F("Hz"));
+        Serial.println (F("Hz"));
+        GPSOK = true;
+      }
+      else
+      {
+        Serial.println (F("Error! Could not reprogram GPS!"));
+        GPSOK = false;
+      }
+      cmdstate = 0;
+    }
+  }
+  else if(cmdstate == 2) {
+    if(c >= '0' && c <= '9') {
+      Serial.write(c);
+      period = period * 10 + c - '0';
+    } else if (c == 'S' || c == 's') {
+      Serial.write(c);
+      period *= 1000000lu;
+    } else if (c == 'M' || c == 'm') {
+      Serial.write(c);
+      period *= 1000lu;
+    } else if (c == 'U' || c == 'u') {
+      period *= 1000lu;
+    } else if (c == '\n' || c == '\r') {
+      Serial.println(F(""));
+      if (setGPS_OutputPeriod(period)) {
+        Serial.print (F("GPS reprogramed to output RF at "));
+        Serial.print(period);
+        Serial.print(F("us, approximately "));
+        Serial.print(1.e6 / period);
+        Serial.println (F("Hz"));
         GPSOK = true;
       }
       else
@@ -214,6 +257,7 @@ uint8_t setOutputFreq[] = {
 };
 
 #define OFFSET_FREQUENCY_LOCKED (18)
+#define OFFSET_FLAGS (34)
 #define OFFSET_CKSUM (38)
 
 // Note: Normally payload_start is 2 bytes past the start of buf, because the first two bytes
@@ -230,9 +274,23 @@ void ubx_compute_checksum(uint8_t *payload_start, uint8_t *payload_end, uint8_t 
 }
 
 bool setGPS_OutputFreq(uint32_t freq) {
+  setOutputFreq[OFFSET_FLAGS] = 0xef;
   for(int i=0; i<4; i++) {
     setOutputFreq[OFFSET_FREQUENCY_LOCKED+i] = freq & 0xff;
     freq >>= 8;
+  }
+  ubx_compute_checksum(setOutputFreq+2, setOutputFreq+38, setOutputFreq+38);
+  sendUBX(setOutputFreq, sizeof(setOutputFreq) / sizeof(uint8_t));
+  bool gps_set_sucess = getUBX_ACK(setOutputFreq);
+  // Serial.println(F("Set output Freq Done"));
+  return gps_set_sucess;
+}
+
+bool setGPS_OutputPeriod(uint32_t period) {
+  setOutputFreq[OFFSET_FLAGS] = 0xe7;
+  for(int i=0; i<4; i++) {
+    setOutputFreq[OFFSET_FREQUENCY_LOCKED+i] = period & 0xff;
+    period >>= 8;
   }
   ubx_compute_checksum(setOutputFreq+2, setOutputFreq+38, setOutputFreq+38);
   sendUBX(setOutputFreq, sizeof(setOutputFreq) / sizeof(uint8_t));
@@ -362,7 +420,7 @@ bool strapped_for_passthrough() {
 }
 
 struct eeprom_data {
-    uint32_t freq;
+    uint32_t value;
 };
 
 
@@ -388,7 +446,7 @@ unsigned long GetEEPROM_CRC(void) {
 void SaveToEPROM ()
 {
 unsigned long CRCFromEEPROM;
-  eeprom_data e = {freq};
+  eeprom_data e = {period ? period | 0x80000000lu : freq};
   EEPROM.put(0, e);                     //Save the Freqency to EEPROM at address0
   CRCFromEEPROM=GetEEPROM_CRC ();          //Calculate CRC on the saved data
   EEPROM.put(sizeof(eeprom_data), CRCFromEEPROM); //Save the CRC after the data
@@ -400,10 +458,14 @@ bool LoadFromEPROM (void)
 unsigned long CRCFromEEPROM,CalculatedCRC;
 
   eeprom_data e;
-  EEPROM.get(0, &e);                           //Load the Frequency from EEPROM address 0
+  EEPROM.get(0, e);                           //Load the Frequency from EEPROM address 0
   EEPROM.get(sizeof(eeprom_data), CRCFromEEPROM);       //Load the CRC value that is stored in EEPROM
   CalculatedCRC=GetEEPROM_CRC();                 //Calculate the CRC of the Frequency
-  freq = e.freq;
+  if(e.value & 0x80000000lu) {
+    period = e.value & 0x7fffffff; freq = 0;
+  } else {
+    period = 0; freq = e.value;
+  }
   return (CRCFromEEPROM==CalculatedCRC);         //If  Stored and Calculated CRC are the same then return true
 }
 
@@ -411,6 +473,7 @@ void HelpText () {
 
   Serial.println(F("Type one of the following serial commands to control the GPS Module: "));
   Serial.println(F(" : F ...  ,(FREQUENCY) sets a new output frequency, value in Hz or use k or M suffix for kHz and MHz"));
+  Serial.println(F(" : T ...  ,(TIME) sets a new output period, value in us or use m or s suffix for milliseconds and seconds"));
   Serial.println(F(" : S      ,(SAVE) Saves the current frequency to be used as startup frequency"));
   Serial.println(F(" : P      ,(PASSTHROUGH) Enters passtrough mode, GPS serial data will be passed to and from this Serial port. Reset the module to go back to normal mode"));
   Serial.println(F(" : H      ,(HELP) prints this information"));
