@@ -256,6 +256,7 @@ uint8_t setOutputFreq[] = {
 0x00, 0x00, 0xEF, 0x00, 0x00, 0x00, 0x20, 0x1B
 };
 
+// Note: these offsets are from the beginning of the packet header, not the payload; as such, they differ by 6 from the payload byte offsets in the PDF
 #define OFFSET_FREQUENCY_LOCKED (18)
 #define OFFSET_FLAGS (34)
 #define OFFSET_CKSUM (38)
