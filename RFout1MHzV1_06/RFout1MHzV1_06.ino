@@ -122,26 +122,27 @@ void setup()
 // Handle serial commands
 void handle_serial() {
   int c = Serial.read();
-  if(c == 'P' || c=='p') {
-    Serial.println(F("Entering passthrough mode -- reset microcontroller to return to normal mode\n"));
-    passthrough = true;
-  }
-   else if(c == 'S' || c == 's') {
-    SaveToEPROM ();
-    Serial.println(F("Time pulse setting was saved"));
-  }
-  else if(c == 'H' || c == 'h') {
-    HelpText ();  
-  }
-  else if(c == 'F' || c == 'f') {
-    Serial.print(F("Frequency?"));
-    cmdstate = 1; freq = period = 0;
-  }
-  else if(c == 'T' || c == 't') {
-    Serial.print(F("Period?"));
-    cmdstate = 2; freq = period = 0;
-  }
-  else if(cmdstate == 1) {
+  if(cmdstate == 0) {
+    if(c == 'P' || c=='p') {
+      Serial.println(F("Entering passthrough mode -- reset microcontroller to return to normal mode\n"));
+      passthrough = true;
+    }
+     else if(c == 'S' || c == 's') {
+      SaveToEPROM ();
+      Serial.println(F("Time pulse setting was saved"));
+    }
+    else if(c == 'H' || c == 'h') {
+      HelpText ();
+    }
+    else if(c == 'F' || c == 'f') {
+      Serial.print(F("Frequency?"));
+      cmdstate = 1; freq = period = 0;
+    }
+    else if(c == 'T' || c == 't') {
+      Serial.print(F("Period?"));
+      cmdstate = 2; freq = period = 0;
+    }
+  } else if(cmdstate == 1) {
     if(c >= '0' && c <= '9') {
       Serial.write(c);
       freq = freq * 10 + c - '0';
@@ -176,8 +177,6 @@ void handle_serial() {
       period *= 1000000lu;
     } else if (c == 'M' || c == 'm') {
       Serial.write(c);
-      period *= 1000lu;
-    } else if (c == 'U' || c == 'u') {
       period *= 1000lu;
     } else if (c == '\n' || c == '\r') {
       Serial.println(F(""));
